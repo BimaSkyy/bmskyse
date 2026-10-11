@@ -5,26 +5,34 @@
 //   ?p=validate&url=...  -> cek link video TikTok asli + konversi ke URL web
 //   ?p=status            -> status padat/lambat tiap layanan (deteksi otomatis)
 // Untuk favorites & comments-hearts, link SELALU divalidasi & dikonversi di server sebelum diteruskan.
+// Untuk comments-hearts, komentar milik username juga dicek dulu (lib/comments.js):
+//   ada   -> diteruskan ke server utama
+//   tidak -> 422 + daftar pengomentar (field "commenters") supaya browser bisa menampilkan panel pilihan
 
 const { resolveVideo } = require("../lib/tiktok");
+const { fetchComments, findCommenter, commenters, norm } = require("../lib/comments");
 const load = require("../lib/load");
 
 const ALLOWED = new Set(["favorites", "comments-hearts", "checkid"]);
 const NEED_VIDEO = new Set(["favorites", "comments-hearts"]);
 
-// Batas cek link per IP (best effort, memori per instance)
-const VALIDATE_LIMIT = 20;
-const validateHits = new Map();
-function tooMany(ip) {
-  const now = Date.now();
-  const arr = (validateHits.get(ip) || []).filter((t) => now - t < 60000);
-  arr.push(now);
-  validateHits.set(ip, arr);
-  if (validateHits.size > 2000) validateHits.delete(validateHits.keys().next().value);
-  return arr.length > VALIDATE_LIMIT;
+// Batas per IP (best effort, memori per instance)
+function limiter(limit) {
+  const hits = new Map();
+  return (ip) => {
+    const now = Date.now();
+    const arr = (hits.get(ip) || []).filter((t) => now - t < 60000);
+    arr.push(now);
+    hits.set(ip, arr);
+    if (hits.size > 2000) hits.delete(hits.keys().next().value);
+    return arr.length > limit;
+  };
 }
+const tooManyValidate = limiter(20);
+const tooManyComments = limiter(10);
 
 const first = (v) => String(Array.isArray(v) ? v[0] : v ?? "");
+const clientIp = (req) => (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.headers["x-real-ip"] || "unknown";
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -33,13 +41,13 @@ module.exports = async (req, res) => {
   if (req.method !== "GET") return fail(405, "Method tidak diizinkan");
 
   const { p, ...params } = req.query;
+  const ip = clientIp(req);
 
   // ---- rute lokal ----
   if (p === "status") return res.status(200).json({ status: "success", ...load.snapshot() });
 
   if (p === "validate") {
-    const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.headers["x-real-ip"] || "unknown";
-    if (tooMany(ip)) return fail(429, "Terlalu banyak pengecekan link, coba lagi sebentar lagi");
+    if (tooManyValidate(ip)) return fail(429, "Terlalu banyak pengecekan link, coba lagi sebentar lagi");
     const v = await resolveVideo(first(params.url));
     if (!v.ok) return fail(422, v.error, { field: "url" });
     return res.status(200).json({ status: "success", url: v.url, id: v.id, user: v.user, title: v.title, verified: v.verified, changed: v.changed });
@@ -58,6 +66,28 @@ module.exports = async (req, res) => {
     video = await resolveVideo(first(params.url));
     if (!video.ok) return fail(422, video.error, { field: "url" });
     params.url = video.url; // pakai URL versi web hasil konversi
+  }
+
+  // ---- comments-hearts: pastikan komentar username itu benar-benar ada ----
+  if (p === "comments-hearts") {
+    const shown = first(params.name_comment).trim().replace(/^@+/, "");
+    const name = norm(shown);
+    if (!name) return fail(422, "Username wajib diisi", { field: "user" });
+    if (tooManyComments(ip)) return fail(429, "Terlalu banyak pengecekan komentar, coba lagi sebentar lagi");
+
+    const c = await fetchComments(video.url);
+    if (!c.ok) return fail(503, c.error);
+
+    const { hit, nick } = findCommenter(c.comments, name);
+    if (!hit) {
+      const list = commenters(c.comments);
+      let msg;
+      if (!list.length) msg = "Video ini belum punya komentar yang bisa dicek";
+      else if (nick) msg = `"${shown}" adalah nickname, bukan username. Username-nya @${nick.username}`;
+      else msg = `Komentar dari @${shown} tidak ditemukan di video ini. Pilih nama dari daftar di bawah`;
+      return fail(422, msg, { field: "user", commenters: list, total: list.length });
+    }
+    params.name_comment = hit.username; // pakai penulisan username asli dari TikTok
   }
 
   const qs = new URLSearchParams();
