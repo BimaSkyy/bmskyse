@@ -11,7 +11,7 @@
 <style>
 :root{
   --bg:#070b13;
-  --panel:rgba(16,23,38,.74);
+  --panel:rgba(10,16,30,.84);
   --field:#0b111d;
   --line:rgba(148,163,184,.16);
   --line-strong:rgba(148,163,184,.3);
@@ -36,19 +36,13 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---------- Latar ---------- */
-.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
-.bg::before,.bg::after{
-  content:"";position:absolute;width:60vmax;height:60vmax;border-radius:50%;filter:blur(90px);opacity:.38;
-}
-.bg::before{background:radial-gradient(circle,#2f6bff 0%,transparent 65%);top:-25vmax;left:-20vmax;animation:drift1 22s ease-in-out infinite alternate}
-.bg::after{background:radial-gradient(circle,#13b8b0 0%,transparent 65%);bottom:-30vmax;right:-25vmax;opacity:.26;animation:drift2 26s ease-in-out infinite alternate}
-@keyframes drift1{to{transform:translate(14vmax,10vmax) scale(1.15)}}
-@keyframes drift2{to{transform:translate(-12vmax,-8vmax) scale(1.1)}}
+html,body{touch-action:pan-y}
+#space{position:fixed;inset:0;z-index:-1;display:block;width:100%;height:100%;pointer-events:none;background:#040815}
 
 /* ---------- Header ---------- */
 header{
   position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;
-  padding:14px 18px;background:rgba(7,11,19,.6);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  padding:14px 18px;background:rgba(5,9,18,.72);
   border-bottom:1px solid var(--line);
 }
 .logo{
@@ -70,7 +64,6 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 
 .card{
   background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px;
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
   box-shadow:0 24px 60px -30px rgba(0,0,0,.7);
 }
 
@@ -148,7 +141,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 /* ---------- Hasil ---------- */
 .result{
   margin-top:16px;padding:18px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);animation:pop .5s var(--ease);
+  animation:pop .5s var(--ease);
 }
 .result[hidden]{display:none}
 @keyframes pop{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
@@ -197,6 +190,19 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+.hero h1,.hero p{text-shadow:0 2px 18px rgba(0,0,0,.7)}
+.tip{
+  position:fixed;left:50%;bottom:10px;z-index:4;transform:translateX(-50%);max-width:calc(100% - 24px);
+  padding:6px 12px;border-radius:999px;background:rgba(10,16,30,.78);border:1px solid var(--line);
+  font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none;animation:tipOut 1s 8s forwards;
+}
+.tip:empty{display:none}
+@keyframes tipOut{to{opacity:0;visibility:hidden}}
+@media (min-width:960px){
+  main{margin-left:max(32px,6vw);margin-right:auto;padding-top:56px}
+  .hero h1{font-size:34px}
+}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .reveal{opacity:1;transform:none}
@@ -204,7 +210,8 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"></div>
+<canvas id="space" aria-hidden="true"></canvas>
+<div class="tip" id="tip" aria-hidden="true"></div>
 
 <header>
   <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 2 4 13.5h6.2L9.5 22 20 9.8h-6.4z"/></svg></div>
@@ -546,6 +553,543 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     if (!id) return fieldError("cekId", "Sesi-ID wajib diisi");
     runCheck(id);
   });
+})();
+</script>
+<script>
+/* Latar tata surya 3D (canvas 2D, tanpa library).
+   Ringan: sprite pra-render, resolusi dibatasi, jeda saat tab tersembunyi,
+   dan kualitas turun otomatis kalau perangkat terasa berat. */
+(() => {
+  "use strict";
+  const canvas = document.getElementById("space");
+  const ctx = canvas && canvas.getContext("2d", { alpha: false });
+  if (!ctx) return;
+
+  const coarse = matchMedia("(pointer:coarse)").matches;
+  const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+  const TAU = Math.PI * 2, D = 1500, SEG = 64, RING_N = 36, PBASE = 0.95;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const mk = n => { const c = document.createElement("canvas"); c.width = c.height = n; return c; };
+
+  let W = 0, H = 0, dpr = 1, cx = 0, cy = 0, S = 1, sizeBoost = 1;
+  let q = coarse ? 0.8 : 1, level = 0;
+  let renderScale = Math.min(window.devicePixelRatio || 1, coarse ? 1.25 : 1.5);
+
+  const tip = document.getElementById("tip");
+  if (tip) tip.textContent = coarse ? "Geser ke samping untuk memutar · ketuk planet untuk info" : "Seret untuk memutar · arahkan kursor ke planet";
+
+  /* ---------- Sprite pra-render ---------- */
+  function planetTex(p) {
+    const N = 128, R = N / 2, c = mk(N), g = c.getContext("2d");
+    g.beginPath(); g.arc(R, R, R - 0.5, 0, TAU); g.clip();
+    if (p.bands) {
+      const n = p.bands.length * 3;
+      for (let i = 0; i < n; i++) { g.fillStyle = p.bands[i % p.bands.length]; g.fillRect(0, (i * N) / n, N, N / n + 1); }
+      g.globalAlpha = 0.16; g.fillStyle = "#2a1608";
+      for (let i = 0; i < 8; i++) g.fillRect(0, rnd(0, N), N, rnd(1, 3));
+      g.globalAlpha = 1;
+      if (p.spot) { g.fillStyle = "rgba(190,85,55,.85)"; g.beginPath(); g.ellipse(N * 0.64, N * 0.64, 12, 6.5, 0, 0, TAU); g.fill(); }
+    } else if (p.type === "earth") {
+      const gr = g.createLinearGradient(0, 0, 0, N); gr.addColorStop(0, "#2a6ad0"); gr.addColorStop(1, "#0d3a8c");
+      g.fillStyle = gr; g.fillRect(0, 0, N, N);
+      g.fillStyle = "#3fa05a";
+      [[.34, .36, 22, 13, .3], [.6, .64, 14, 26, -.2], [.74, .3, 12, 8, 0], [.22, .68, 12, 8, .5], [.5, .18, 16, 6, 0]].forEach(a => {
+        g.beginPath(); g.ellipse(a[0] * N, a[1] * N, a[2], a[3], a[4], 0, TAU); g.fill();
+      });
+      g.fillStyle = "#fff"; g.globalAlpha = 0.32;
+      for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(rnd(10, N - 10), rnd(10, N - 10), rnd(14, 30), rnd(3, 6), rnd(-.5, .5), 0, TAU); g.fill(); }
+      g.globalAlpha = 0.75; g.fillRect(0, 0, N, 5); g.fillRect(0, N - 5, N, 5);
+    } else {
+      const gr = g.createRadialGradient(R * 0.7, R * 0.7, R * 0.1, R, R, R);
+      gr.addColorStop(0, p.c[0]); gr.addColorStop(1, p.c[1]);
+      g.fillStyle = gr; g.fillRect(0, 0, N, N);
+      if (p.type === "rock") {
+        g.fillStyle = "#000"; g.globalAlpha = 0.2;
+        for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(rnd(14, N - 14), rnd(14, N - 14), rnd(3, 10), 0, TAU); g.fill(); }
+      } else if (p.type === "mars") {
+        g.fillStyle = "#5a1f10"; g.globalAlpha = 0.22;
+        for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(rnd(20, N - 20), rnd(30, N - 30), rnd(8, 20), rnd(5, 12), rnd(0, 3), 0, TAU); g.fill(); }
+        g.fillStyle = "#fff"; g.globalAlpha = 0.8; g.beginPath(); g.ellipse(R, 2, 22, 7, 0, 0, TAU); g.fill();
+      } else if (p.type === "ice") {
+        g.fillStyle = "#fff"; g.globalAlpha = 0.1;
+        for (let i = 0; i < 3; i++) g.fillRect(0, rnd(10, N - 10), N, rnd(4, 10));
+      } else if (p.type === "cloud") {
+        g.strokeStyle = "#fff"; g.globalAlpha = 0.25; g.lineWidth = 5;
+        for (let i = 0; i < 4; i++) { const y = rnd(15, N - 15); g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(N * .3, y - 12, N * .6, y + 12, N, y); g.stroke(); }
+      }
+    }
+    return c;
+  }
+  const shade = (() => { // bayangan sisi gelap; sisi terang menghadap +x lalu diputar ke arah matahari
+    const N = 128, R = N / 2, c = mk(N), g = c.getContext("2d");
+    const gr = g.createRadialGradient(R * 1.55, R, R * 0.15, R * 1.55, R, R * 2.1);
+    gr.addColorStop(0, "rgba(2,6,16,0)"); gr.addColorStop(.4, "rgba(2,6,16,.04)");
+    gr.addColorStop(.7, "rgba(2,6,16,.72)"); gr.addColorStop(1, "rgba(2,6,16,.96)");
+    g.fillStyle = gr; g.beginPath(); g.arc(R, R, R, 0, TAU); g.fill();
+    return c;
+  })();
+  function glowSprite(hex) {
+    const N = 128, c = mk(N), g = c.getContext("2d");
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, rgba(hex, 0)); gr.addColorStop(.55, rgba(hex, 0)); gr.addColorStop(.64, rgba(hex, .5)); gr.addColorStop(1, rgba(hex, 0));
+    g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    return c;
+  }
+  const sunGlow = (() => {
+    const N = 256, c = mk(N), g = c.getContext("2d");
+    const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gr.addColorStop(0, "rgba(255,244,214,.95)"); gr.addColorStop(.16, "rgba(255,214,140,.65)");
+    gr.addColorStop(.3, "rgba(255,160,70,.28)"); gr.addColorStop(.55, "rgba(255,120,40,.08)"); gr.addColorStop(1, "rgba(255,120,40,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    return c;
+  })();
+  const sunCore = (() => {
+    const N = 128, R = 64, c = mk(N), g = c.getContext("2d");
+    g.beginPath(); g.arc(R, R, R - 0.5, 0, TAU); g.clip();
+    const gr = g.createRadialGradient(R, R, 0, R, R, R);
+    gr.addColorStop(0, "#fffbe8"); gr.addColorStop(.6, "#ffe08a"); gr.addColorStop(.92, "#ffb23d"); gr.addColorStop(1, "#ff9a2a");
+    g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    g.fillStyle = "#ff8a1f"; g.globalAlpha = 0.18;
+    for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(rnd(10, N - 10), rnd(10, N - 10), rnd(3, 9), 0, TAU); g.fill(); }
+    return c;
+  })();
+  const starGlow = (() => {
+    const c = mk(32), g = c.getContext("2d");
+    const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    gr.addColorStop(0, "rgba(255,255,255,.9)"); gr.addColorStop(.25, "rgba(170,205,255,.35)"); gr.addColorStop(1, "rgba(120,170,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+    return c;
+  })();
+
+  /* ---------- Data planet ---------- */
+  const SUN = { n: "Matahari", info: "Bintang pusat tata surya", sx: 0, sy: 0, sr: 30 };
+  const PLANETS = [
+    { n: "Merkurius", info: "0,39 AU dari Matahari", r: 75, s: 5, type: "rock", c: ["#bdb6ab", "#7a746b"] },
+    { n: "Venus", info: "0,72 AU dari Matahari", r: 110, s: 8.5, type: "cloud", c: ["#f6dca6", "#c8964f"], glow: "#ffd9a0" },
+    { n: "Bumi", info: "1 AU dari Matahari", r: 150, s: 9.5, type: "earth", glow: "#5aa8ff", moon: true },
+    { n: "Mars", info: "1,52 AU dari Matahari", r: 190, s: 7, type: "mars", c: ["#d9744a", "#8f3a20"] },
+    { n: "Jupiter", info: "5,2 AU dari Matahari", r: 260, s: 23, bands: ["#e6c9a2", "#b98657", "#f0dfc4", "#a9693f", "#dcb88d"], spot: true },
+    { n: "Saturnus", info: "9,5 AU dari Matahari", r: 330, s: 17, bands: ["#f3e2b5", "#d9bd83", "#efd8a0", "#c9a766"], ring: true },
+    { n: "Uranus", info: "19,2 AU dari Matahari", r: 395, s: 13, type: "ice", c: ["#b4f1f4", "#5fc2cf"], glow: "#8ff0f5" },
+    { n: "Neptunus", info: "30,1 AU dari Matahari", r: 450, s: 12.5, type: "ice", c: ["#7aa6ff", "#2f4fd0"], glow: "#6d9bff" }
+  ];
+  const ALL = [SUN, ...PLANETS];
+  PLANETS.forEach(p => {
+    p.tex = planetTex(p);
+    p.glowSp = p.glow ? glowSprite(p.glow) : null;
+    p.a0 = rnd(0, TAU);
+    p.w = TAU / (14 * Math.pow(p.r / 75, 1.5));
+    p.sx = p.sy = p.sr = p.k = p.pz = 0;
+    if (p.ring) { p.rx = new Float32Array(RING_N + 1); p.ry = new Float32Array(RING_N + 1); p.rz = new Float32Array(RING_N + 1); }
+  });
+  const moonTex = planetTex({ type: "rock", c: ["#dcdee3", "#8c909a"] });
+  const MOON = { sx: 0, sy: 0, sr: 0 };
+  const ents = Array.from({ length: 11 }, () => ({ kind: 0, p: null, x: 0, y: 0, r: 0, z: 0 }));
+
+  /* ---------- Latar statis, galaksi, bintang, sabuk asteroid ---------- */
+  const bg = document.createElement("canvas");
+  function blob(g, x, y, r, rgb, a) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  function buildBg() {
+    bg.width = canvas.width; bg.height = canvas.height;
+    const g = bg.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const lg = g.createLinearGradient(0, 0, 0, H);
+    lg.addColorStop(0, "#050b1c"); lg.addColorStop(.55, "#040815"); lg.addColorStop(1, "#02050d");
+    g.fillStyle = lg; g.fillRect(0, 0, W, H);
+    const m = Math.min(W, H);
+    blob(g, W * .84, H * .16, m * .55, "170,120,150", .13);
+    blob(g, W * .78, H * .55, m * .6, "40,90,230", .13);
+    blob(g, W * .12, H * .86, m * .55, "30,160,200", .09);
+  }
+
+  let spiral = null;
+  function buildSpiral() {
+    const size = clamp(Math.round(Math.max(W, H) * 0.85 * dpr * 0.75), 384, 900);
+    const c = mk(size), g = c.getContext("2d"), R = size / 2;
+    g.globalCompositeOperation = "lighter";
+    let gr = g.createRadialGradient(R, R, 0, R, R, R);
+    gr.addColorStop(0, "rgba(80,150,255,.30)"); gr.addColorStop(.5, "rgba(40,100,230,.12)"); gr.addColorStop(1, "rgba(20,60,200,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, size, size);
+    gr = g.createRadialGradient(R, R, 0, R, R, R * 0.28);
+    gr.addColorStop(0, "rgba(255,235,200,.95)"); gr.addColorStop(.35, "rgba(255,190,120,.45)"); gr.addColorStop(1, "rgba(255,160,90,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, size, size);
+    const TMAX = 4.6, A = 0.06 * R, B = Math.log((0.95 * R) / A) / TMAX;
+    const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+    const N = Math.round(2600 * q);
+    for (let i = 0; i < N; i++) {
+      const th = Math.random() * TMAX, arm = (i % 2) * Math.PI;
+      const r = A * Math.exp(B * th), sc = r * 0.14 + 2;
+      const x = R + Math.cos(th + arm) * r + gauss() * sc, y = R + Math.sin(th + arm) * r + gauss() * sc;
+      const f = clamp(r / R, 0, 1);
+      const cr = Math.round(255 - f * 170), cg = Math.round(205 - f * 30 + f * 25), cb = Math.round(150 + f * 105);
+      g.fillStyle = `rgba(${cr},${cg},${cb},${0.3 + Math.random() * 0.5})`;
+      const s = Math.random() < 0.08 ? 2 : 1;
+      g.fillRect(x, y, s, s);
+    }
+    for (let i = 0; i < 220; i++) {
+      const th = Math.random() * TMAX, arm = (i % 2) * Math.PI, r = A * Math.exp(B * th), sc = r * 0.1 + 3;
+      const x = R + Math.cos(th + arm) * r + gauss() * sc, y = R + Math.sin(th + arm) * r + gauss() * sc;
+      g.fillStyle = r / R > 0.55 ? "rgba(70,150,255,.035)" : "rgba(255,170,100,.035)";
+      g.beginPath(); g.arc(x, y, 6 + Math.random() * 16, 0, TAU); g.fill();
+    }
+    g.fillStyle = "rgba(255,170,90,.8)";
+    for (let i = 0; i < 40; i++) {
+      const th = Math.random() * TMAX, arm = (i % 2) * Math.PI, r = A * Math.exp(B * th);
+      g.fillRect(R + Math.cos(th + arm) * r + gauss() * 4, R + Math.sin(th + arm) * r + gauss() * 4, 1.5, 1.5);
+    }
+    spiral = c;
+  }
+
+  const STAR_COL = ["#ffffff", "#bcd6ff", "#ffe2bf"];
+  let sN = 0, sX, sY, sZ, sS, sA, sSp, sPh, sC;
+  function seedStars() {
+    sN = Math.round(clamp((W * H) / 5200, 90, 260) * q);
+    sX = new Float32Array(sN); sY = new Float32Array(sN); sZ = new Float32Array(sN); sS = new Float32Array(sN);
+    sA = new Float32Array(sN); sSp = new Float32Array(sN); sPh = new Float32Array(sN); sC = new Uint8Array(sN);
+    for (let i = 0; i < sN; i++) {
+      const z = rnd(0.2, 1);
+      sX[i] = Math.random(); sY[i] = Math.random(); sZ[i] = z;
+      sS[i] = i < 7 ? 2 : z > 0.8 ? 2 : z > 0.45 ? 1.4 : 1;
+      sA[i] = i < 7 ? 1 : rnd(0.35, 0.95); sSp[i] = rnd(0.8, 2.6); sPh[i] = rnd(0, TAU); sC[i] = Math.floor(rnd(0, 3));
+    }
+  }
+
+  const BELT_MAX = 320;
+  const bR = new Float32Array(BELT_MAX), bA = new Float32Array(BELT_MAX), bY = new Float32Array(BELT_MAX), bS = new Float32Array(BELT_MAX);
+  let bN = 0;
+  for (let i = 0; i < BELT_MAX; i++) { bR[i] = rnd(212, 238); bA[i] = rnd(0, TAU); bY[i] = rnd(-4, 4); bS[i] = rnd(1, 1.9); }
+  const seedBelt = () => { bN = Math.round(BELT_MAX * q); };
+
+  /* ---------- Ukuran & tata letak ---------- */
+  function layout() {
+    const wide = W >= 960 && W > H;
+    cx = wide ? W * 0.69 : W * 0.5;
+    cy = wide ? H * 0.5 : H * (coarse ? 0.38 : 0.42);
+    const avail = wide ? Math.min(W * 0.6, H * 1.02) : Math.min(W * 1.02, H * 0.92);
+    S = (avail * 0.96) / (2 * 470);
+    sizeBoost = 1 + Math.max(0, 0.75 - S) * 2.4;
+  }
+  function applySize() {
+    W = canvas.clientWidth || window.innerWidth;
+    H = canvas.clientHeight || window.innerHeight;
+    dpr = renderScale;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    layout(); buildBg(); buildSpiral(); seedStars(); seedBelt();
+  }
+
+  /* ---------- Kamera & proyeksi 3D ---------- */
+  let yaw = 0, pitch = PBASE, cosY = 1, sinY = 0, cosP = 1, sinP = 0;
+  const P = { x: 0, y: 0, k: 1, z: 0 };
+  function project(x, y, z) {
+    const xr = x * cosY + z * sinY, zr = -x * sinY + z * cosY;
+    const yy = y * cosP + zr * sinP, zz = -y * sinP + zr * cosP;
+    const k = D / (D + zz);
+    P.x = cx + xr * k * S; P.y = cy - yy * k * S; P.k = k; P.z = zz;
+  }
+
+  /* ---------- Interaksi ---------- */
+  let dragging = false, dragId = null, lx = 0, ly = 0, moved = 0;
+  let yawAuto = 0, yawUser = 0, pitchUser = 0, velYaw = 0, velPitch = 0;
+  let parYaw = 0, parPitch = 0, tYaw = 0, tPitch = 0;
+  let hover = null, pinned = null, pinUntil = 0, boost = 0;
+  const isUI = el => !!(el && el.closest && el.closest("header,.card,.result,.toast,.tip,button,input,a"));
+  function pick(x, y) {
+    let best = null, bd = 1e9;
+    for (const o of ALL) {
+      const d = Math.hypot(x - o.sx, y - o.sy), lim = Math.max(o.sr + 10, 18);
+      if (d < lim && d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
+  addEventListener("pointerdown", e => {
+    if (e.target.closest && e.target.closest(".btn")) boost = 1;
+    if (isUI(e.target)) return;
+    dragging = true; dragId = e.pointerId; lx = e.clientX; ly = e.clientY; moved = 0; velYaw = velPitch = 0;
+  });
+  addEventListener("pointermove", e => {
+    if (e.pointerType === "mouse") {
+      tYaw = (e.clientX / W - 0.5) * 0.35; tPitch = -(e.clientY / H - 0.5) * 0.16;
+      if (!dragging) hover = isUI(e.target) ? null : pick(e.clientX, e.clientY);
+      document.documentElement.style.cursor = hover ? "pointer" : "";
+    }
+    if (!dragging || e.pointerId !== dragId) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    lx = e.clientX; ly = e.clientY; moved += Math.abs(dx) + Math.abs(dy);
+    yawUser += dx * 0.0065;
+    pitchUser = clamp(pitchUser + dy * 0.0045, -0.6, 0.5);
+    velYaw = velYaw * 0.5 + dx * 0.0065 * 60 * 0.5;
+    velPitch = velPitch * 0.5 + dy * 0.0045 * 60 * 0.5;
+  });
+  const endDrag = e => {
+    if (!dragging || e.pointerId !== dragId) return;
+    dragging = false;
+    if (moved < 8) {
+      const o = pick(e.clientX, e.clientY);
+      if (o) { pinned = o; pinUntil = performance.now() + 3200; }
+      velYaw = velPitch = 0;
+    }
+  };
+  addEventListener("pointerup", endDrag);
+  addEventListener("pointercancel", endDrag);
+  document.documentElement.addEventListener("mouseleave", () => { hover = null; tYaw = tPitch = 0; document.documentElement.style.cursor = ""; });
+
+  /* ---------- Gambar ---------- */
+  const sh = { on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1 };
+  let shNext = rnd(4, 9);
+
+  function drawGalaxy(t) {
+    if (!spiral) return;
+    const wide = W >= 960 && W > H;
+    const gx = (wide ? W * 0.2 : W * 0.26) - yaw * 18, gy = (wide ? H * 0.32 : H * 0.30) + pitch * 10;
+    const gs = Math.max(W, H) * (wide ? 0.8 : 0.95);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.9;
+    ctx.translate(gx, gy); ctx.rotate(-0.62); ctx.scale(1, 0.32); ctx.rotate(t * 0.02);
+    ctx.drawImage(spiral, -gs / 2, -gs / 2, gs, gs);
+    ctx.restore();
+  }
+
+  function drawStars(t) {
+    const ox = yaw * 140, oy = pitch * 60;
+    for (let i = 0; i < sN; i++) {
+      const z = sZ[i];
+      let x = (sX[i] * W + ox * z) % W; if (x < 0) x += W;
+      let y = (sY[i] * H + oy * z) % H; if (y < 0) y += H;
+      const a = sA[i] * (0.65 + 0.35 * Math.sin(t * sSp[i] + sPh[i]));
+      ctx.globalAlpha = a; ctx.fillStyle = STAR_COL[sC[i]];
+      ctx.fillRect(x, y, sS[i], sS[i]);
+      if (i < 7) { ctx.globalAlpha = a * 0.8; ctx.drawImage(starGlow, x - 9, y - 9, 18, 18); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawShooting(dt) {
+    if (reduce) return;
+    shNext -= dt;
+    if (!sh.on && shNext <= 0) {
+      const sp = rnd(520, 760), a = rnd(0.35, 0.6);
+      sh.on = true; sh.x = rnd(W * 0.3, W); sh.y = rnd(0, H * 0.35);
+      sh.vx = -Math.cos(a) * sp; sh.vy = Math.sin(a) * sp; sh.life = 0; sh.max = rnd(0.7, 1.1); shNext = rnd(6, 13);
+    }
+    if (!sh.on) return;
+    sh.life += dt; sh.x += sh.vx * dt; sh.y += sh.vy * dt;
+    const k = 1 - sh.life / sh.max;
+    if (k <= 0) { sh.on = false; return; }
+    const tx = sh.x - sh.vx * 0.12, ty = sh.y - sh.vy * 0.12;
+    const gr = ctx.createLinearGradient(sh.x, sh.y, tx, ty);
+    gr.addColorStop(0, `rgba(210,230,255,${k})`); gr.addColorStop(1, "rgba(210,230,255,0)");
+    ctx.strokeStyle = gr; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(tx, ty); ctx.stroke();
+  }
+
+  function ringPass(p, front) {
+    ctx.strokeStyle = "rgba(232,214,170,.62)";
+    ctx.lineWidth = Math.max(1.5, p.s * 0.55 * p.k * S * sizeBoost);
+    ctx.beginPath();
+    for (let i = 0; i < RING_N; i++) {
+      const isFront = (p.rz[i] + p.rz[i + 1]) * 0.5 < p.pz;
+      if (isFront !== front) continue;
+      ctx.moveTo(p.rx[i], p.ry[i]); ctx.lineTo(p.rx[i + 1], p.ry[i + 1]);
+    }
+    ctx.stroke();
+  }
+
+  function drawSun(e, t) {
+    const r = e.r, pulse = 1 + 0.035 * Math.sin(t * 1.6);
+    ctx.globalCompositeOperation = "lighter";
+    let g = r * 5.2 * pulse;
+    ctx.globalAlpha = 0.9; ctx.drawImage(sunGlow, e.x - g, e.y - g, g * 2, g * 2);
+    ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    ctx.drawImage(sunCore, e.x - r, e.y - r, r * 2, r * 2);
+    ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.55;
+    g = r * 1.9 * pulse; ctx.drawImage(sunGlow, e.x - g, e.y - g, g * 2, g * 2);
+    ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  }
+
+  function drawBody(tex, x, y, r) {
+    ctx.drawImage(tex, x - r, y - r, r * 2, r * 2);
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(Math.atan2(SUN.sy - y, SUN.sx - x));
+    ctx.drawImage(shade, -r, -r, r * 2, r * 2);
+    ctx.restore();
+  }
+
+  function drawPlanet(p) {
+    const r = p.sr;
+    if (p.ring) ringPass(p, false);
+    drawBody(p.tex, p.sx, p.sy, r);
+    if (p.glowSp) {
+      const g = r * 1.6;
+      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.8;
+      ctx.drawImage(p.glowSp, p.sx - g, p.sy - g, g * 2, g * 2);
+      ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    }
+    if (p.ring) ringPass(p, true);
+    if (p === hover) {
+      ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 5, 0, TAU); ctx.stroke();
+    }
+  }
+
+  function drawSystem(t) {
+    cosY = Math.cos(yaw); sinY = Math.sin(yaw); cosP = Math.cos(pitch); sinP = Math.sin(pitch);
+
+    // jalur orbit (satu path untuk semua)
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(130,175,255,.16)";
+    ctx.beginPath();
+    for (const p of PLANETS) {
+      for (let i = 0; i <= SEG; i++) {
+        const a = (i / SEG) * TAU; project(Math.cos(a) * p.r, 0, Math.sin(a) * p.r);
+        i ? ctx.lineTo(P.x, P.y) : ctx.moveTo(P.x, P.y);
+      }
+    }
+    ctx.stroke();
+    if (hover && hover.r) {
+      ctx.strokeStyle = "rgba(160,200,255,.5)"; ctx.beginPath();
+      for (let i = 0; i <= SEG; i++) {
+        const a = (i / SEG) * TAU; project(Math.cos(a) * hover.r, 0, Math.sin(a) * hover.r);
+        i ? ctx.lineTo(P.x, P.y) : ctx.moveTo(P.x, P.y);
+      }
+      ctx.stroke();
+    }
+
+    // sabuk asteroid
+    ctx.fillStyle = "rgba(200,194,182,.7)";
+    const bw = t * (TAU / 72);
+    for (let i = 0; i < bN; i++) {
+      const a = bA[i] + bw;
+      project(Math.cos(a) * bR[i], bY[i], Math.sin(a) * bR[i]);
+      ctx.fillRect(P.x, P.y, bS[i] * P.k, bS[i] * P.k);
+    }
+
+    // kumpulkan benda, urutkan dari terjauh
+    let n = 0;
+    project(0, 0, 0);
+    let e = ents[n++];
+    e.kind = 0; e.p = null; e.x = P.x; e.y = P.y; e.z = P.z; e.r = 34 * P.k * S * sizeBoost * 0.9;
+    SUN.sx = P.x; SUN.sy = P.y; SUN.sr = e.r;
+
+    for (const p of PLANETS) {
+      const a = p.a0 + t * p.w, wx = Math.cos(a) * p.r, wz = Math.sin(a) * p.r;
+      project(wx, 0, wz);
+      p.sx = P.x; p.sy = P.y; p.k = P.k; p.pz = P.z; p.sr = p.s * P.k * S * sizeBoost;
+      e = ents[n++]; e.kind = 1; e.p = p; e.x = P.x; e.y = P.y; e.z = P.z; e.r = p.sr;
+      if (p.ring) {
+        const rad = p.s * 2.05;
+        for (let i = 0; i <= RING_N; i++) {
+          const b = (i / RING_N) * TAU, lx2 = Math.cos(b) * rad, lz2 = Math.sin(b) * rad;
+          project(wx + lx2, lx2 * 0.26, wz + lz2);
+          p.rx[i] = P.x; p.ry[i] = P.y; p.rz[i] = P.z;
+        }
+      }
+      if (p.moon) {
+        const am = t * 1.1;
+        project(wx + Math.cos(am) * 20, Math.sin(am) * 4, wz + Math.sin(am) * 20);
+        MOON.sx = P.x; MOON.sy = P.y; MOON.sr = 2.8 * P.k * S * sizeBoost;
+        e = ents[n++]; e.kind = 2; e.p = null; e.x = P.x; e.y = P.y; e.z = P.z; e.r = MOON.sr;
+      }
+    }
+    for (let i = 1; i < n; i++) {
+      const x = ents[i]; let j = i - 1;
+      while (j >= 0 && ents[j].z < x.z) { ents[j + 1] = ents[j]; j--; }
+      ents[j + 1] = x;
+    }
+    for (let i = 0; i < n; i++) {
+      const x = ents[i];
+      if (x.kind === 0) drawSun(x, t);
+      else if (x.kind === 1) drawPlanet(x.p);
+      else drawBody(moonTex, x.x, x.y, x.r);
+    }
+  }
+
+  function drawLabel(now) {
+    const o = hover || (pinned && now < pinUntil ? pinned : null);
+    if (!o) return;
+    const f1 = '700 12.5px "Plus Jakarta Sans",system-ui,sans-serif', f2 = '500 11px "Plus Jakarta Sans",system-ui,sans-serif';
+    ctx.font = f1; const w1 = ctx.measureText(o.n).width;
+    ctx.font = f2; const w2 = ctx.measureText(o.info).width;
+    const w = Math.max(w1, w2) + 24, h = 40;
+    const x = clamp(o.sx - w / 2, 8, W - w - 8);
+    let y = o.sy - o.sr - h - 12; if (y < 8) y = o.sy + o.sr + 12;
+    ctx.fillStyle = "rgba(8,14,28,.92)"; ctx.strokeStyle = "rgba(130,175,255,.5)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10); else ctx.rect(x, y, w, h);
+    ctx.fill(); ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e8eef9"; ctx.font = f1; ctx.fillText(o.n, x + w / 2, y + 17);
+    ctx.fillStyle = "#8fa3c4"; ctx.font = f2; ctx.fillText(o.info, x + w / 2, y + 32);
+    ctx.textAlign = "left";
+  }
+
+  let t = 0;
+  function render(dt, now) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    ctx.drawImage(bg, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawGalaxy(t);
+    drawStars(t);
+    drawShooting(dt);
+    drawSystem(t);
+    drawLabel(now);
+  }
+
+  /* ---------- Loop & kualitas adaptif ---------- */
+  let raf = 0, last = 0, ts = 1, ema = 16, frames = 0;
+  function degrade() {
+    level++; q *= 0.78; renderScale = Math.max(0.6, renderScale * 0.82);
+    frames = 0; ema = 16; applySize();
+  }
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    const ms = now - last;
+    if (ms < 15.5) return; // batasi ~60 fps (layar 120 Hz tidak boros)
+    last = now; frames++;
+    if (frames > 40) {
+      ema = ema * 0.94 + ms * 0.06;
+      if (frames % 90 === 0 && ema > 26 && level < 2) degrade();
+    }
+    const dt = Math.min(ms / 1000, 0.05);
+    ts += ((hover ? 0.14 : 1) - ts) * Math.min(1, dt * 5);
+    boost = Math.max(0, boost - dt * 1.2);
+    t += dt * ts * (1 + boost * 5);
+    yawAuto += dt * 0.025;
+    if (!dragging) {
+      yawUser += velYaw * dt; pitchUser = clamp(pitchUser + velPitch * dt, -0.6, 0.5);
+      const f = Math.exp(-3 * dt); velYaw *= f; velPitch *= f;
+    }
+    const sm = Math.min(1, dt * 4);
+    parYaw += (tYaw - parYaw) * sm; parPitch += (tPitch - parPitch) * sm;
+    yaw = yawAuto + yawUser + parYaw;
+    pitch = clamp(PBASE + pitchUser + parPitch, 0.32, 1.45);
+    render(dt, now);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (reduce) return;
+    if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
+    else if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
+  });
+  let rt = 0;
+  addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (Math.abs(w - W) < 2 && Math.abs(h - H) < 140) return; // abaikan naik-turun address bar HP
+      applySize();
+      if (reduce) render(0, 0);
+    }, 160);
+  });
+
+  applySize();
+  if (reduce) { yaw = 0.4; render(0, 0); }
+  else { last = performance.now(); raf = requestAnimationFrame(frame); }
 })();
 </script>
 </body>
