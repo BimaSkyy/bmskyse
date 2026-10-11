@@ -108,6 +108,21 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 @keyframes shake{20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
 .msg{min-height:0;margin:6px 2px 0;font-size:12.5px;color:var(--err)}
 .msg:empty{display:none}
+.msg.ok{color:var(--ok)}
+.msg.wait{color:var(--muted)}
+
+/* ---------- Notif service padat / lambat ---------- */
+.notice{
+  display:flex;align-items:flex-start;gap:10px;margin:10px 4px 0;padding:10px 12px;border-radius:12px;
+  background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.38);color:#fde7a6;font-size:13px;line-height:1.4;
+  animation:paneIn .35s var(--ease);
+}
+.notice[hidden]{display:none}
+.notice.slow{background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.4);color:#fecdd6}
+.notice .dot{flex:none;width:9px;height:9px;margin-top:5px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 0 rgba(251,191,36,.6);animation:ping 1.6s infinite}
+.notice.slow .dot{background:var(--err);box-shadow:0 0 0 0 rgba(251,113,133,.6)}
+@keyframes ping{70%{box-shadow:0 0 0 8px rgba(251,191,36,0)}100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}}
+.notice b{font-weight:700}
 
 .btn{
   position:relative;overflow:hidden;width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;
@@ -243,6 +258,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 
     <!-- Favorites -->
     <form class="pane on" id="p-fav" role="tabpanel" aria-labelledby="t-fav" novalidate>
+      <div class="notice" id="notice-favorites" role="status" aria-live="polite" hidden><span class="dot" aria-hidden="true"></span><span class="txt"></span></div>
       <div class="field">
         <label for="favUrl">Link video TikTok</label>
         <div class="control">
@@ -257,6 +273,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 
     <!-- Comments-Hearts -->
     <form class="pane" id="p-ch" role="tabpanel" aria-labelledby="t-ch" novalidate>
+      <div class="notice" id="notice-comments-hearts" role="status" aria-live="polite" hidden><span class="dot" aria-hidden="true"></span><span class="txt"></span></div>
       <div class="field">
         <label for="chUrl">Link video TikTok</label>
         <div class="control">
@@ -359,16 +376,20 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     ctl.classList.remove("invalid");
     void ctl.offsetWidth; // restart animasi shake
     ctl.classList.add("invalid");
-    $("#" + id + "-msg").textContent = text;
+    const m = $("#" + id + "-msg");
+    m.className = "msg";
+    m.textContent = text;
     input.focus();
   }
   function clearErrors(form) {
     $$(".control", form).forEach(c => c.classList.remove("invalid"));
-    $$(".msg", form).forEach(m => (m.textContent = ""));
+    $$(".msg", form).forEach(m => { m.className = "msg"; m.textContent = ""; });
   }
   $$("input").forEach(i => i.addEventListener("input", () => {
     i.closest(".control").classList.remove("invalid");
-    $("#" + i.id + "-msg").textContent = "";
+    const m = $("#" + i.id + "-msg");
+    m.className = "msg";
+    m.textContent = "";
   }));
 
   $$("[data-paste]").forEach(b => b.addEventListener("click", async () => {
@@ -377,6 +398,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
       input.value = (await navigator.clipboard.readText()).trim();
       input.dispatchEvent(new Event("input"));
       input.focus();
+      if (LINK_INPUTS.includes(input.id)) checkLink(input.id);
     } catch {
       toast("Izinkan akses clipboard atau tempel manual");
     }
@@ -404,17 +426,87 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   async function callApi(service, params) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 35000);
+    const t0 = performance.now();
+    let timedOut = false;
     try {
       const qs = new URLSearchParams({ p: service, ...params });
       const r = await fetch(`${API}?${qs}`, { cache: "no-store", signal: ctrl.signal });
       try { return await r.json(); }
       catch { return { status: "error", massage: "Respons server tidak valid" }; }
     } catch (e) {
-      return { status: "error", massage: e.name === "AbortError" ? "Server terlalu lama merespons, coba lagi" : "Tidak ada koneksi internet" };
+      timedOut = e.name === "AbortError";
+      return { status: "error", massage: timedOut ? "Server terlalu lama merespons, coba lagi" : "Tidak ada koneksi internet" };
     } finally {
       clearTimeout(timer);
+      noteTiming(service, performance.now() - t0, timedOut);
     }
   }
+
+  /* ---------- Notif service padat / lambat ---------- */
+  // Dua sumber: (1) /api/proxy?p=status (dihitung server dari jumlah request, request bersamaan,
+  // latensi & error server utama), (2) pengukuran lokal: respons > 12 detik / timeout.
+  const SERVICES = ["favorites", "comments-hearts"];
+  const SLOW_LOCAL_MS = 12000, LOCAL_HOLD = 120000, POLL_MS = 20000;
+  const localSlow = {};
+  const serverLevel = {};
+  const NOTE = {
+    busy: "<b>Service padat</b> — banyak permintaan sedang masuk. Proses bisa lebih lama dari biasanya.",
+    slow: "<b>Service lambat</b> — server sedang lambat merespons. Proses bisa tertunda, mohon bersabar."
+  };
+  function renderNotice(service) {
+    const el = $("#notice-" + service);
+    if (!el) return;
+    const lv = localSlow[service] > Date.now() ? "slow" : (serverLevel[service] || "ok");
+    el.hidden = lv === "ok";
+    if (lv === "ok") return;
+    el.className = "notice" + (lv === "slow" ? " slow" : "");
+    $(".txt", el).innerHTML = NOTE[lv];
+  }
+  function noteTiming(service, ms, timedOut) {
+    if (!SERVICES.includes(service)) return;
+    if (timedOut || ms > SLOW_LOCAL_MS) localSlow[service] = Date.now() + LOCAL_HOLD;
+    else if (ms < SLOW_LOCAL_MS / 2) localSlow[service] = 0;
+    renderNotice(service);
+  }
+  async function pollStatus() {
+    if (document.hidden) return;
+    try {
+      const r = await fetch(`${API}?p=status`, { cache: "no-store" });
+      const d = await r.json();
+      if (d && d.services) for (const s of SERVICES) { serverLevel[s] = d.services[s] ? d.services[s].level : "ok"; renderNotice(s); }
+    } catch { /* abaikan: notif hanya pelengkap */ }
+  }
+  pollStatus();
+  setInterval(pollStatus, POLL_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pollStatus(); });
+
+  /* ---------- Cek link video (asli atau bukan) + konversi ke URL web ---------- */
+  const LINK_INPUTS = ["favUrl", "chUrl"];
+  const checkToken = {};
+  async function checkLink(inputId) {
+    const input = $("#" + inputId);
+    const msg = $("#" + inputId + "-msg");
+    const url = input.value.trim();
+    if (!url || !TIKTOK.test(url)) return null; // format salah dilaporkan saat kirim
+    const token = (checkToken[inputId] = (checkToken[inputId] || 0) + 1);
+    msg.className = "msg wait";
+    msg.textContent = "Mengecek link…";
+    const d = await callApi("validate", { url });
+    if (token !== checkToken[inputId] || input.value.trim() !== url) return null; // input sudah berubah
+    if (d.status === "success") {
+      msg.className = "msg ok";
+      msg.textContent = `✓ Video valid · @${d.user}` + (d.verified === false ? " (belum terverifikasi)" : "");
+      if (d.url && d.url !== url) { input.value = d.url; toast("Link dikonversi ke versi web"); }
+      return d;
+    }
+    fieldError(inputId, d.massage || "Link tidak valid");
+    return null;
+  }
+  LINK_INPUTS.forEach(id => {
+    const el = $("#" + id);
+    el.addEventListener("change", () => checkLink(id));
+    el.addEventListener("paste", () => setTimeout(() => checkLink(id), 0));
+  });
 
   /* ---------- Hasil ---------- */
   const ICONS = {
@@ -528,6 +620,8 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     setBusy(btn, true);
     const d = await callApi("favorites", { url });
     setBusy(btn, false);
+    if (d["url-web"] && d["url-web"] !== url) { $("#favUrl").value = d["url-web"]; toast("Link dikonversi ke versi web"); }
+    if (d.field === "url") return fieldError("favUrl", d.massage);
     d.status === "success" && d["sesi-id"] ? showSession(d["sesi-id"]) : showFail(d);
   });
 
@@ -543,6 +637,8 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     setBusy(btn, true);
     const d = await callApi("comments-hearts", { url, name_comment: user });
     setBusy(btn, false);
+    if (d["url-web"] && d["url-web"] !== url) { $("#chUrl").value = d["url-web"]; toast("Link dikonversi ke versi web"); }
+    if (d.field === "url") return fieldError("chUrl", d.massage);
     d.status === "success" && d["sesi-id"] ? showSession(d["sesi-id"]) : showFail(d);
   });
 
