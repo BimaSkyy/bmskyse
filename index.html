@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#070b13">
+<meta name="theme-color" content="#040815">
 <title>BmSkySocialEngine</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#070b13;
-  --panel:rgba(10,16,30,.84);
-  --field:#0b111d;
-  --line:rgba(148,163,184,.16);
-  --line-strong:rgba(148,163,184,.3);
-  --text:#e8eef9;
-  --muted:#8796b0;
+  --bg:#040815;
+  --field:rgba(4,8,20,.55);
+  --line:rgba(170,195,255,.14);
+  --line-strong:rgba(170,195,255,.26);
+  --text:#e9effb;
+  --muted:#94a3c1;
   --accent:#4c8dff;
   --accent-2:#26d0ce;
+  --sun:#ffb347;
   --ok:#34d399;
   --err:#fb7185;
   --warn:#fbbf24;
@@ -33,76 +33,118 @@ body{
 }
 button,input{font:inherit;color:inherit}
 button{cursor:pointer}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
 
 /* ---------- Latar ---------- */
 html,body{touch-action:pan-y}
 #space{position:fixed;inset:0;z-index:-1;display:block;width:100%;height:100%;pointer-events:none;background:#040815}
 
+/* ---------- Kaca yang disinari Matahari ----------
+   Elemen .glass tembus pandang: planet, bintang, dan galaksi di latar terlihat blur di belakangnya.
+   Script latar menghitung arah Matahari dari tiap elemen dan mengisi --la (sudut), --li (terang),
+   --ux/--uy (arah bayangan), jadi sisi yang menghadap Matahari menyala hangat dan bayangan jatuh ke sisi sebaliknya. */
+.glass{
+  --la:200deg;--li:.7;--ux:0;--uy:1;
+  position:relative;isolation:isolate;
+  border:1px solid var(--line);
+  background:
+    linear-gradient(var(--la),rgba(255,176,92,calc(.18*var(--li))) 0%,rgba(255,176,92,0) 60%),
+    linear-gradient(180deg,rgba(16,28,58,.42),rgba(5,10,24,.5));
+  -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);
+  box-shadow:
+    calc(var(--ux)*16px) calc(var(--uy)*22px) 48px -24px rgba(0,0,0,.8),
+    inset 0 1px 0 rgba(255,255,255,.04);
+}
+.glass::before{
+  content:"";position:absolute;inset:-1px;z-index:-1;padding:1px;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(var(--la),rgba(255,208,146,calc(.95*var(--li))) 0%,rgba(255,170,100,calc(.24*var(--li))) 36%,rgba(150,185,255,.05) 64%,rgba(150,185,255,.12) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+html.lite .glass{
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+  background:
+    linear-gradient(var(--la),rgba(255,176,92,calc(.16*var(--li))) 0%,rgba(255,176,92,0) 60%),
+    linear-gradient(180deg,rgba(12,22,48,.8),rgba(5,10,24,.86));
+}
+@media (pointer:coarse){
+  .glass{-webkit-backdrop-filter:blur(9px) saturate(1.3);backdrop-filter:blur(9px) saturate(1.3)}
+}
+
 /* ---------- Header ---------- */
 header{
-  position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;
-  padding:14px 18px;background:rgba(5,9,18,.72);
-  border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:13px;padding:13px 18px 13px 22px;
+  background:linear-gradient(180deg,rgba(4,8,20,.62),rgba(4,8,20,.26));
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border-bottom:1px solid transparent;
+  border-image:linear-gradient(90deg,rgba(255,190,110,0),rgba(255,190,110,.3) 30%,rgba(170,195,255,.1)) 1;
 }
+html.lite header{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(4,8,20,.78)}
 .logo{
-  width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
-  background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 6px 18px -6px var(--accent);
+  position:relative;flex:none;width:28px;height:28px;border-radius:50%;
+  background:radial-gradient(circle at 38% 36%,#fffbe8,#ffe08a 42%,#ffb23d 78%,#ff8a1f);
+  box-shadow:0 0 0 1px rgba(255,205,130,.35),0 0 16px 2px rgba(255,170,70,.55),0 0 40px 6px rgba(255,140,50,.2);
 }
-.logo svg{width:18px;height:18px;fill:#fff}
+.logo::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(160,195,255,.26)}
+.logo::before{
+  content:"";position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;border-radius:50%;
+  background:#8dbbff;box-shadow:0 0 8px 1px #4c8dff;animation:orbit 8s linear infinite;
+}
+@keyframes orbit{from{transform:rotate(0) translateX(20px)}to{transform:rotate(360deg) translateX(20px)}}
 header b{font-weight:800;font-size:16px;letter-spacing:-.01em}
 
 /* ---------- Layout ---------- */
 main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 .hero h1{margin:0 0 6px;font-size:28px;line-height:1.15;letter-spacing:-.025em;font-weight:800}
-.hero p{margin:0 0 22px;color:var(--muted);max-width:40ch}
+.hero p{margin:0 0 22px;color:#a7b5d0;max-width:40ch}
+.hero h1,.hero p{text-shadow:0 2px 18px rgba(0,0,0,.75)}
 
 .reveal{opacity:0;transform:translateY(14px);animation:rise .7s var(--ease) forwards}
 .reveal:nth-child(2){animation-delay:.08s}
 .reveal:nth-child(3){animation-delay:.16s}
 @keyframes rise{to{opacity:1;transform:none}}
 
-.card{
-  background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px;
-  box-shadow:0 24px 60px -30px rgba(0,0,0,.7);
-}
+.card{border-radius:22px;padding:14px}
 
 /* ---------- Tab ---------- */
-.tabs{position:relative;display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border-radius:14px;background:rgba(255,255,255,.04);--i:0}
+.tabs{position:relative;display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border-radius:15px;background:rgba(3,7,18,.42);border:1px solid var(--line);--i:0}
 .ind{
-  position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/3);border-radius:10px;
-  background:linear-gradient(135deg,var(--accent),#3a6fe0);box-shadow:0 8px 20px -8px var(--accent);
+  position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/3);border-radius:11px;
+  background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.05));
+  border:1px solid rgba(255,205,150,.3);
+  box-shadow:inset 0 1px 0 rgba(255,220,170,.5),0 10px 22px -12px rgba(255,150,70,.6);
   transform:translateX(calc(var(--i) * 100%));transition:transform .4s cubic-bezier(.3,1.25,.45,1);
 }
 .tab{
   position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:4px;
-  padding:9px 4px;border:0;background:none;border-radius:10px;color:var(--muted);
+  padding:9px 4px;border:0;background:none;border-radius:11px;color:var(--muted);
   font-size:12px;font-weight:600;line-height:1.15;text-align:center;transition:color .25s;
 }
-.tab svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:transform .3s var(--ease)}
+.tab svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:transform .3s var(--ease),color .25s}
 .tab[aria-selected="true"]{color:#fff}
-.tab[aria-selected="true"] svg{transform:scale(1.12)}
+.tab[aria-selected="true"] svg{transform:scale(1.12);color:var(--sun)}
 
 /* ---------- Form ---------- */
 .pane{display:none;padding:6px 4px 4px}
 .pane.on{display:block;animation:paneIn .35s var(--ease)}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .field{margin-top:14px}
-.field label{display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:#b8c4da}
+.field label{display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:#bcc8de}
 .control{
   position:relative;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;
-  background:var(--field);border:1px solid var(--line-strong);border-radius:12px;
+  background:var(--field);border:1px solid var(--line-strong);border-radius:13px;
   transition:border-color .2s,box-shadow .2s;
 }
-.control:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px rgba(76,141,255,.16)}
+.control:focus-within{border-color:var(--accent-2);box-shadow:0 0 0 4px rgba(38,208,206,.14)}
 .control > svg{flex:none;width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .control input{flex:1;min-width:0;padding:13px 0;background:none;border:0;outline:0;font-size:15px}
-.control input::placeholder{color:#55627a}
+.control input::placeholder{color:#5d6b84}
 .mini{
-  flex:none;padding:6px 10px;border:1px solid var(--line-strong);border-radius:8px;background:rgba(255,255,255,.04);
-  color:#c6d2e8;font-size:12px;font-weight:600;transition:background .2s,border-color .2s;
+  flex:none;padding:6px 10px;border:1px solid var(--line-strong);border-radius:9px;background:rgba(255,255,255,.05);
+  color:#cdd8ec;font-size:12px;font-weight:600;transition:background .2s,border-color .2s,color .2s;
 }
-.mini:hover{background:rgba(255,255,255,.09);border-color:var(--accent)}
+.mini:hover{background:rgba(255,255,255,.1);border-color:rgba(255,200,140,.6)}
+.mini.done{color:var(--ok);border-color:rgba(52,211,153,.55)}
 .control.invalid{border-color:var(--err);animation:shake .4s}
 .control.invalid:focus-within{box-shadow:0 0 0 4px rgba(251,113,133,.16)}
 @keyframes shake{20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
@@ -124,21 +166,29 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 @keyframes ping{70%{box-shadow:0 0 0 8px rgba(251,191,36,0)}100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}}
 .notice b{font-weight:700}
 
+/* Tombol utama berwarna Matahari */
 .btn{
-  position:relative;overflow:hidden;width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;
-  background:linear-gradient(135deg,var(--accent),#3a6fe0 60%,#2a8fd8);color:#fff;font-weight:700;font-size:15px;
-  box-shadow:0 12px 26px -12px var(--accent);transition:transform .15s,box-shadow .25s,opacity .2s;
+  position:relative;overflow:hidden;width:100%;margin-top:18px;padding:14px;border:0;border-radius:13px;
+  background:linear-gradient(135deg,#ffcb6b,#ffa23f 55%,#ff7f3a);color:#2b1503;font-weight:800;font-size:15px;
+  box-shadow:0 14px 30px -14px rgba(255,140,60,.85),inset 0 1px 0 rgba(255,255,255,.5);
+  transition:transform .15s,box-shadow .25s,opacity .2s;
 }
 .btn::after{
-  content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.22) 50%,transparent 65%);
+  content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.32) 50%,transparent 65%);
   transform:translateX(-120%);transition:transform .7s var(--ease);
 }
 .btn:hover::after{transform:translateX(120%)}
 .btn:active{transform:scale(.985)}
-.btn:disabled{opacity:.7;cursor:progress}
-.btn .rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.4);transform:scale(0);animation:rip .6s ease-out forwards;pointer-events:none}
+.btn:disabled{opacity:.75;cursor:progress}
+.btn .rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.5);transform:scale(0);animation:rip .6s ease-out forwards;pointer-events:none}
 @keyframes rip{to{transform:scale(1);opacity:0}}
-.spin{display:inline-block;width:15px;height:15px;margin-right:8px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;vertical-align:-2px;animation:sp .7s linear infinite}
+/* Loader: satu planet kecil mengorbit */
+.spin{
+  position:relative;display:inline-block;width:16px;height:16px;margin-right:9px;vertical-align:-3px;
+  border:1.5px solid rgba(255,255,255,.25);border:1.5px solid color-mix(in srgb,currentColor 28%,transparent);
+  border-radius:50%;animation:sp .9s linear infinite;
+}
+.spin::after{content:"";position:absolute;top:-3.5px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:currentColor}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 /* ---------- Riwayat ---------- */
@@ -147,17 +197,14 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 .hist p{margin:0 0 6px;font-size:12px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{
-  max-width:100%;padding:5px 10px;border:1px solid var(--line-strong);border-radius:999px;background:rgba(255,255,255,.03);
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#b8c4da;
+  max-width:100%;padding:5px 10px;border:1px solid var(--line-strong);border-radius:999px;background:rgba(255,255,255,.04);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#bcc8de;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:border-color .2s,color .2s;
 }
-.chip:hover{border-color:var(--accent);color:#fff}
+.chip:hover{border-color:rgba(255,200,140,.6);color:#fff}
 
 /* ---------- Hasil ---------- */
-.result{
-  margin-top:16px;padding:18px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
-  animation:pop .5s var(--ease);
-}
+.result{margin-top:16px;padding:18px;border-radius:22px;animation:pop .5s var(--ease)}
 .result[hidden]{display:none}
 @keyframes pop{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
 .result.ok{border-color:rgba(52,211,153,.35)}
@@ -179,7 +226,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 @keyframes pulse{50%{opacity:.55}}
 .info .ico .ring,.info .ico .mark{stroke:var(--accent)}
 
-.rbody{margin:14px 0 0;color:#c6d2e8;font-size:14px;overflow-wrap:anywhere}
+.rbody{margin:14px 0 0;color:#c9d4e8;font-size:14px;overflow-wrap:anywhere}
 .idrow{display:flex;gap:8px;margin-top:14px}
 .idrow code{
   flex:1;min-width:0;padding:11px 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--field);
@@ -188,27 +235,50 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 }
 .act{display:flex;gap:8px;margin-top:12px}
 .ghost{
-  flex:1;padding:11px;border:1px solid var(--line-strong);border-radius:12px;background:rgba(255,255,255,.04);
+  flex:1;padding:11px;border:1px solid var(--line-strong);border-radius:12px;background:rgba(255,255,255,.05);
   font-size:13.5px;font-weight:600;transition:background .2s,border-color .2s,color .2s;
 }
-.ghost:hover{background:rgba(255,255,255,.09);border-color:var(--accent)}
+.ghost:hover{background:rgba(255,255,255,.1);border-color:rgba(255,200,140,.6)}
 .ghost.done{color:var(--ok);border-color:rgba(52,211,153,.5)}
 .idrow .ghost{flex:none;padding:0 16px}
 .hint{margin:10px 2px 0;font-size:12px;color:var(--muted)}
 
+/* ---------- Panel pengomentar (muncul kalau komentar tidak ditemukan) ---------- */
+.panel{margin-top:16px;padding:16px 14px 14px;border-radius:22px;animation:pop .5s var(--ease)}
+.panel[hidden]{display:none}
+.phead h2{margin:0;font-size:15px;font-weight:700;line-height:1.3}
+.phead small{display:block;margin:2px 0 12px;font-size:12.5px;font-weight:500;color:var(--muted)}
+.plist{
+  --rows:10;--row-h:58px;
+  list-style:none;margin:12px 0 0;padding:0;max-height:calc(var(--rows) * var(--row-h));overflow-y:auto;overscroll-behavior:contain;
+  border:1px solid var(--line);border-radius:14px;background:rgba(3,7,18,.4);
+  scrollbar-width:thin;scrollbar-color:rgba(170,195,255,.32) transparent;
+}
+.pitem{display:flex;align-items:center;gap:11px;height:var(--row-h);padding:0 10px 0 12px;border-bottom:1px solid rgba(170,195,255,.08)}
+.pitem:last-child{border-bottom:0}
+.av{
+  flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;
+  background:rgba(255,255,255,.07);border:1px solid var(--line-strong);font-size:13px;font-weight:800;color:#dbe5f7;
+}
+.pname{flex:1;min-width:0;line-height:1.3}
+.pname b{display:block;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname span{display:block;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcopy{min-width:74px}
+.pempty{display:grid;place-items:center;height:calc(var(--row-h) * 2);padding:0 14px;text-align:center;font-size:13px;color:var(--muted)}
+
 /* ---------- Toast ---------- */
 .toast{
   position:fixed;left:50%;bottom:24px;z-index:10;max-width:calc(100% - 32px);padding:10px 16px;border-radius:999px;
-  background:#1a2338;border:1px solid var(--line-strong);font-size:13.5px;font-weight:600;
+  background:rgba(14,22,42,.88);border:1px solid var(--line-strong);font-size:13.5px;font-weight:600;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   box-shadow:0 14px 34px -10px rgba(0,0,0,.7);
   opacity:0;transform:translate(-50%,16px);pointer-events:none;transition:opacity .3s,transform .35s var(--ease);
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
-.hero h1,.hero p{text-shadow:0 2px 18px rgba(0,0,0,.7)}
 .tip{
   position:fixed;left:50%;bottom:10px;z-index:4;transform:translateX(-50%);max-width:calc(100% - 24px);
-  padding:6px 12px;border-radius:999px;background:rgba(10,16,30,.78);border:1px solid var(--line);
+  padding:6px 12px;border-radius:999px;background:rgba(10,16,30,.7);border:1px solid var(--line);
   font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none;animation:tipOut 1s 8s forwards;
 }
 .tip:empty{display:none}
@@ -229,7 +299,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
 <div class="tip" id="tip" aria-hidden="true"></div>
 
 <header>
-  <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 2 4 13.5h6.2L9.5 22 20 9.8h-6.4z"/></svg></div>
+  <div class="logo" aria-hidden="true"></div>
   <b>BmSkySocialEngine</b>
 </header>
 
@@ -239,7 +309,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     <p>Pilih layanan, tempel link video, lalu pantau progres sesi dari satu tempat.</p>
   </section>
 
-  <section class="card reveal">
+  <section class="card glass reveal">
     <div class="tabs" id="tabs" role="tablist" aria-label="Layanan">
       <span class="ind" aria-hidden="true"></span>
       <button class="tab" role="tab" id="t-fav" data-tab="fav" aria-selected="true" aria-controls="p-fav">
@@ -313,7 +383,19 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     </form>
   </section>
 
-  <section class="result" id="result" hidden aria-live="polite"></section>
+  <section class="panel glass" id="cmtPanel" hidden aria-live="polite">
+    <div class="phead">
+      <h2>Pengomentar di video ini</h2>
+      <small id="pCount"></small>
+    </div>
+    <div class="control">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+      <input id="pq" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Cari nama atau username">
+    </div>
+    <ul class="plist" id="pList" role="list"></ul>
+  </section>
+
+  <section class="result glass" id="result" hidden aria-live="polite"></section>
 </main>
 
 <div class="toast" id="toast" role="status"></div>
@@ -333,6 +415,10 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   const result = $("#result");
+  const panelEl = $("#cmtPanel");
+  const pList = $("#pList");
+  const pq = $("#pq");
+  let cmtList = [];
   const tabsEl = $("#tabs");
   const TABS = ["fav", "ch", "cek"];
 
@@ -358,6 +444,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     });
     $$(".pane").forEach(p => p.classList.toggle("on", p.id === "p-" + t));
     hideResult();
+    hidePanel();
   }
   $$(".tab").forEach(b => {
     b.addEventListener("click", () => showTab(b.dataset.tab));
@@ -370,7 +457,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   showTab("fav");
 
   /* ---------- Field helper ---------- */
-  function fieldError(id, text) {
+  function fieldError(id, text, focus = true) {
     const input = $("#" + id);
     const ctl = input.closest(".control");
     ctl.classList.remove("invalid");
@@ -379,7 +466,12 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     const m = $("#" + id + "-msg");
     m.className = "msg";
     m.textContent = text;
-    input.focus();
+    if (focus) input.focus();
+  }
+  function setMsg(id, cls, text) {
+    const m = $("#" + id + "-msg");
+    m.className = "msg" + (cls ? " " + cls : "");
+    m.textContent = text;
   }
   function clearErrors(form) {
     $$(".control", form).forEach(c => c.classList.remove("invalid"));
@@ -388,6 +480,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   $$("input").forEach(i => i.addEventListener("input", () => {
     i.closest(".control").classList.remove("invalid");
     const m = $("#" + i.id + "-msg");
+    if (!m) return;
     m.className = "msg";
     m.textContent = "";
   }));
@@ -517,7 +610,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   };
   function paint(kind, title, sub) {
     result.hidden = false;
-    result.className = "result " + kind;
+    result.className = "result glass " + kind;
     result.innerHTML =
       `<div class="rhead"><div class="ico"><svg viewBox="0 0 52 52">${ICONS[kind]}</svg></div>
        <h2>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ""}</h2></div>`;
@@ -532,8 +625,9 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     result.insertAdjacentHTML("beforeend",
       `<div class="idrow"><code>${esc(id)}</code><button class="ghost" id="copyBtn" type="button">Salin</button></div>
        <div class="act"><button class="ghost" id="goCheck" type="button">Lihat status sesi</button></div>`);
-    $("#copyBtn").addEventListener("click", e => copy(id, e.currentTarget));
+    $("#copyBtn").addEventListener("click", e => copy(id, e.currentTarget, "Sesi-ID tersalin"));
     $("#goCheck").addEventListener("click", () => openCheck(id));
+    if (window.BmSpace) window.BmSpace.flare();
     scrollToResult();
   }
 
@@ -562,7 +656,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     scrollToResult();
   }
 
-  async function copy(text, btn) {
+  async function copy(text, btn, note = "Tersalin") {
     try { await navigator.clipboard.writeText(text); }
     catch {
       const t = document.createElement("textarea");
@@ -572,9 +666,45 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     const old = btn.textContent;
     btn.textContent = "Tersalin ✓";
     btn.classList.add("done");
-    toast("Sesi-ID tersalin");
+    toast(note);
     setTimeout(() => { btn.textContent = old; btn.classList.remove("done"); }, 1800);
   }
+
+  /* ---------- Panel pengomentar ---------- */
+  const firstChar = s => Array.from(String(s || "").replace(/^@/, ""))[0] || "?";
+  function renderPanel() {
+    const q = pq.value.trim().toLowerCase().replace(/^@/, "");
+    const rows = q ? cmtList.filter(c => c.username.toLowerCase().includes(q) || (c.nickname || "").toLowerCase().includes(q)) : cmtList;
+    $("#pCount").textContent = q
+      ? `${rows.length} dari ${cmtList.length} nama`
+      : `${cmtList.length} nama. Salin username, lalu tempel ke kolom di atas.`;
+    pList.innerHTML = rows.length
+      ? rows.map(c => {
+          const shown = c.nickname || c.username;
+          return `<li class="pitem"><span class="av" aria-hidden="true">${esc(firstChar(shown).toUpperCase())}</span>` +
+            `<span class="pname"><b>${esc(shown)}</b><span>@${esc(c.username)}</span></span>` +
+            `<button type="button" class="mini pcopy" data-u="${esc(c.username)}" aria-label="Salin @${esc(c.username)}">Salin</button></li>`;
+        }).join("")
+      : `<li class="pempty">Tidak ada nama yang cocok dengan pencarian</li>`;
+    pList.scrollTop = 0;
+  }
+  function showPanel(list) {
+    cmtList = list;
+    pq.value = "";
+    renderPanel();
+    panelEl.hidden = false;
+    panelEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function hidePanel() {
+    panelEl.hidden = true;
+    cmtList = [];
+    pList.innerHTML = "";
+  }
+  pq.addEventListener("input", renderPanel);
+  pList.addEventListener("click", e => {
+    const b = e.target.closest(".pcopy");
+    if (b) copy(b.dataset.u, b, "Username tersalin");
+  });
 
   /* ---------- Riwayat ---------- */
   const getHist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); } catch { return []; } };
@@ -628,6 +758,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   $("#p-ch").addEventListener("submit", async e => {
     e.preventDefault();
     clearErrors(e.currentTarget);
+    hidePanel();
     const url = $("#chUrl").value.trim();
     const user = $("#chUser").value.trim().replace(/^@+/, "");
     if (!url) return fieldError("chUrl", "Link video wajib diisi");
@@ -635,11 +766,24 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     if (!user) return fieldError("chUser", "Username wajib diisi");
     const btn = $(".btn", e.currentTarget);
     setBusy(btn, true);
+    setMsg("chUser", "wait", "Mengecek komentar…");
     const d = await callApi("comments-hearts", { url, name_comment: user });
     setBusy(btn, false);
     if (d["url-web"] && d["url-web"] !== url) { $("#chUrl").value = d["url-web"]; toast("Link dikonversi ke versi web"); }
-    if (d.field === "url") return fieldError("chUrl", d.massage);
-    d.status === "success" && d["sesi-id"] ? showSession(d["sesi-id"]) : showFail(d);
+    if (d.field === "url") { setMsg("chUser", "", ""); return fieldError("chUrl", d.massage); }
+    if (d.field === "user") {
+      // Komentar tidak ketemu: tampilkan daftar pengomentar supaya bisa dipilih. Tanpa fokus, agar keyboard tidak menutup panel.
+      fieldError("chUser", d.massage, false);
+      if (Array.isArray(d.commenters) && d.commenters.length) showPanel(d.commenters);
+      return;
+    }
+    if (d.status === "success" && d["sesi-id"]) {
+      setMsg("chUser", "ok", `✓ Komentar @${user} ditemukan`);
+      showSession(d["sesi-id"]);
+    } else {
+      setMsg("chUser", "", "");
+      showFail(d);
+    }
   });
 
   $("#p-cek").addEventListener("submit", e => {
@@ -877,7 +1021,34 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     layout(); buildBg(); buildSpiral(); seedStars(); seedBelt();
+    relight();
   }
+
+  /* ---------- Cahaya Matahari ke elemen web ----------
+     Matahari selalu di (cx, cy). Tiap .glass dihitung arahnya terhadap Matahari:
+     sisi yang menghadap menyala hangat, bayangan jatuh ke sisi sebaliknya, makin jauh makin redup. */
+  let lightQueued = false;
+  function relight() {
+    lightQueued = false;
+    const diag = Math.hypot(W, H);
+    document.querySelectorAll(".glass").forEach(el => {
+      if (el.hidden) return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2) return;
+      const dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d, st = el.style;
+      st.setProperty("--la", (Math.atan2(ux, -uy) * 180 / Math.PI).toFixed(1) + "deg");
+      st.setProperty("--li", clamp(1.12 - d / (diag * 0.85), 0.28, 1).toFixed(2));
+      st.setProperty("--ux", ux.toFixed(3));
+      st.setProperty("--uy", uy.toFixed(3));
+    });
+  }
+  const queueLight = () => { if (!lightQueued) { lightQueued = true; requestAnimationFrame(relight); } };
+  addEventListener("scroll", queueLight, { passive: true });
+  if (window.ResizeObserver) { const ro = new ResizeObserver(queueLight); document.querySelectorAll(".glass").forEach(el => ro.observe(el)); }
+  const mainEl = document.querySelector("main");
+  if (mainEl && window.MutationObserver) new MutationObserver(queueLight).observe(mainEl, { subtree: true, attributes: true, attributeFilter: ["hidden", "class"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(queueLight);
 
   /* ---------- Kamera & proyeksi 3D ---------- */
   let yaw = 0, pitch = PBASE, cosY = 1, sinY = 0, cosP = 1, sinP = 0;
@@ -894,7 +1065,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   let yawAuto = 0, yawUser = 0, pitchUser = 0, velYaw = 0, velPitch = 0;
   let parYaw = 0, parPitch = 0, tYaw = 0, tPitch = 0;
   let hover = null, pinned = null, pinUntil = 0, boost = 0;
-  const isUI = el => !!(el && el.closest && el.closest("header,.card,.result,.toast,.tip,button,input,a"));
+  const isUI = el => !!(el && el.closest && el.closest("header,.glass,.toast,.tip,button,input,a"));
   function pick(x, y) {
     let best = null, bd = 1e9;
     for (const o of ALL) {
@@ -936,6 +1107,21 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   document.documentElement.addEventListener("mouseleave", () => { hover = null; tYaw = tPitch = 0; document.documentElement.style.cursor = ""; });
 
   /* ---------- Gambar ---------- */
+  // Gelombang cahaya dari Matahari (dipanggil saat sesi berhasil dikirim)
+  let flareT = -1;
+  function drawFlare(dt) {
+    if (flareT < 0) return;
+    flareT += dt;
+    const k = flareT / 1.8;
+    if (k >= 1) { flareT = -1; return; }
+    const e = 1 - Math.pow(1 - k, 3), r = SUN.sr * 1.4 + e * Math.max(W, H) * 0.7;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(255,196,120,${(1 - k) * 0.5})`; ctx.lineWidth = 1 + (1 - k) * 3;
+    ctx.beginPath(); ctx.arc(SUN.sx, SUN.sy, r, 0, TAU); ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+  }
+  window.BmSpace = { flare() { flareT = 0; boost = Math.max(boost, 0.5); } };
+
   const sh = { on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1 };
   let shNext = rnd(4, 9);
 
@@ -1133,6 +1319,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
     drawStars(t);
     drawShooting(dt);
     drawSystem(t);
+    drawFlare(dt);
     drawLabel(now);
   }
 
@@ -1140,6 +1327,7 @@ main{max-width:520px;margin:0 auto;padding:28px 16px 72px}
   let raf = 0, last = 0, ts = 1, ema = 16, frames = 0;
   function degrade() {
     level++; q *= 0.78; renderScale = Math.max(0.6, renderScale * 0.82);
+    document.documentElement.classList.add("lite"); // HP berat: matikan blur kaca, tetap tembus pandang
     frames = 0; ema = 16; applySize();
   }
   function frame(now) {
